@@ -25,18 +25,6 @@ class _LoginFormState extends State<_LoginForm> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Initialize controllers with viewModel values if needed
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final viewModel = Provider.of<LoginViewModel>(context, listen: false);
-      _emailController.text = viewModel.email;
-      _passwordController.text = viewModel.password;
-    });
-  }
 
   @override
   void dispose() {
@@ -47,91 +35,93 @@ class _LoginFormState extends State<_LoginForm> {
 
   Future<void> _login() async {
     if (_formKey.currentState?.validate() ?? false) {
-      setState(() => _isLoading = true);
-      
       final viewModel = Provider.of<LoginViewModel>(context, listen: false);
       viewModel.email = _emailController.text;
       viewModel.password = _passwordController.text;
       
-      final success = await viewModel.login();
+      final result = await viewModel.login();
       
-      setState(() => _isLoading = false);
-      
-      if (success && mounted) {
+      if (result != null && mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
+      // Hata durumu viewModel'in errorMessage'ında tutulacak ve
+      // otomatik olarak gösterilecek
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = Provider.of<LoginViewModel>(context);
-    
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const FlutterLogo(size: 80),
-                const SizedBox(height: 32),
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'E-posta',
-                    border: OutlineInputBorder(),
+    return Consumer<LoginViewModel>(
+      builder: (context, viewModel, child) => Scaffold(
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const FlutterLogo(size: 80),
+                  const SizedBox(height: 32),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'E-posta',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'E-posta giriniz';
+                      }
+                      if (!value.contains('@')) {
+                        return 'Geçerli bir e-posta giriniz';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'E-posta giriniz';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Geçerli bir e-posta giriniz';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _passwordController,
-                  keyboardType: TextInputType.visiblePassword,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Şifre',
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    keyboardType: TextInputType.visiblePassword,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Şifre',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Şifre giriniz';
+                      }
+                      if (value.length < 6) {
+                        return 'Şifre en az 6 karakter olmalı';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Şifre giriniz';
-                    }
-                    if (value.length < 6) {
-                      return 'Şifre en az 6 karakter olmalı';
-                    }
-                    return null;
-                  },
-                ),
-                if (viewModel.errorMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    viewModel.errorMessage!,
-                    style: const TextStyle(color: Colors.red),
+                  if (viewModel.errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      viewModel.errorMessage!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: viewModel.isLoading ? null : _login,
+                      child: viewModel.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(color: Colors.white),
+                            )
+                          : const Text('Giriş Yap'),
+                    ),
                   ),
                 ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Giriş Yap'),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),

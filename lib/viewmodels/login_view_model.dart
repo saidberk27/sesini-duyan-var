@@ -1,5 +1,20 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+
+class AuthResult {
+  final UserCredential? userCredential;
+  final String? errorMessage;
+  final bool isSuccess;
+
+  AuthResult.success(this.userCredential)
+      : errorMessage = null,
+        isSuccess = true;
+
+  AuthResult.error(this.errorMessage)
+      : userCredential = null,
+        isSuccess = false;
+}
 
 class LoginViewModel extends ChangeNotifier {
   String _email = '';
@@ -22,12 +37,16 @@ class LoginViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login() async {
+Future<UserCredential?> login() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
+    
     try {
-      final result = await AuthService().login(email: _email, password: _password);
+      final result = await AuthService().signInWithEmailAndPassword(
+        email: _email, 
+        password: _password
+      );
       _isLoading = false;
       notifyListeners();
       return result;
@@ -35,7 +54,9 @@ class LoginViewModel extends ChangeNotifier {
       _isLoading = false;
       _errorMessage = e.toString();
       notifyListeners();
-      return false;
+      return null; // Hata durumunda null dön
     }
-  }
 }
+}
+
+
