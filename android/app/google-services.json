@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "893255076175",
+    "project_id": "sesini-duyan-var",
+    "storage_bucket": "sesini-duyan-var.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:893255076175:android:c6c93d805cfb71d6711d3a",
+        "android_client_info": {
+          "package_name": "com.example.sesini_duyan_var"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzLB1EPafGxUA15KGcaQc7DhzslfoDTAY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
