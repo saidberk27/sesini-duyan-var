@@ -16,13 +16,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+        final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Ayarlar',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        backgroundColor: theme.primaryColor,
+        title: Row(
+          children: [
+            const Icon(Icons.settings, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(
+              'Ayarlar',
+              style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
+            ),
+          ],
         ),
-        elevation: 0,
+        elevation: 2,
       ),
       body: ListView(
         children: [

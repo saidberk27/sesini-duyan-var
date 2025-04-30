@@ -17,7 +17,9 @@ class HomePage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
   InkWell(
-    onTap: () {}, // Logo'ya tıklandığında bir işlem yapmak isterseniz buraya ekleyebilirsiniz
+    onDoubleTap: () {
+            Navigator.pushNamed(context, '/alert');
+    }, // Logo'ya tıklandığında bir işlem yapmak isterseniz buraya ekleyebilirsiniz
     child: Container(
       margin: const EdgeInsets.only(bottom: 24),
       decoration: BoxDecoration(
@@ -78,7 +80,17 @@ class HomePage extends StatelessWidget {
     },
   ),  
   const SizedBox(height: 16),
-    HomePageCard(
+  HomePageCard(
+    icon: Icons.book,
+    title: 'KVKK',
+    color: AppTheme.primaryColor,
+    backgroundColor: AppTheme.secondaryColor.shade100,
+    onTap: () {
+      Navigator.pushNamed(context, '/kvkk');
+    },
+  ), 
+  const SizedBox(height: 16),
+  HomePageCard(
     icon: Icons.logout_rounded,
     title: 'Çıkış Yap',
     color: AppTheme.primaryColor,

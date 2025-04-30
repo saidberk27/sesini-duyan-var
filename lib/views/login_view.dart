@@ -61,7 +61,11 @@ class _LoginFormState extends State<_LoginForm> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const FlutterLogo(size: 80),
+                          Image.asset(
+                  'assets/images/logo0.png', // Logo path'ini kendi projenize göre güncelleyin
+                  height: 180,
+                  width: 180,
+                ),
                   const SizedBox(height: 32),
                   TextFormField(
                     controller: _emailController,

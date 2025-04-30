@@ -105,7 +105,7 @@ class AppTheme {
       // AppBar Teması
       appBarTheme: const AppBarTheme(
         backgroundColor: primaryColor,
-        foregroundColor: secondaryColor,
+        foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true, // Başlığı ortala
         systemOverlayStyle: SystemUiOverlayStyle.light,
