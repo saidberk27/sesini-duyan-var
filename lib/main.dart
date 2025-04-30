@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sesini_duyan_var/views/about_view.dart';
+import 'package:sesini_duyan_var/views/bluetooth_chat_view.dart';
 import 'package:sesini_duyan_var/views/bluetooth_view.dart';
 import 'package:sesini_duyan_var/views/home_view.dart';
 import 'package:sesini_duyan_var/views/settings_view.dart';import 'theme/app_theme.dart';
@@ -33,6 +34,7 @@ class MyApp extends StatelessWidget {
         '/bluetooth': (context) => const BluetoothPage(),
         '/settings': (context) => const SettingsPage(),
         '/about': (context) => const AboutPage(),
+        '/chat': (context) => const BluetoothChatPage(),
       },
     );
   }
