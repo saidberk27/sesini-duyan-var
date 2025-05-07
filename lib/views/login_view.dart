@@ -38,9 +38,9 @@ class _LoginFormState extends State<_LoginForm> {
       final viewModel = Provider.of<LoginViewModel>(context, listen: false);
       viewModel.email = _emailController.text;
       viewModel.password = _passwordController.text;
-      
+
       final result = await viewModel.login();
-      
+
       if (result != null && mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
@@ -49,87 +49,105 @@ class _LoginFormState extends State<_LoginForm> {
     }
   }
 
+  void _navigateToRegister() {
+    Navigator.of(context).pushNamed('/register');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<LoginViewModel>(
-      builder: (context, viewModel, child) => Scaffold(
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                          Image.asset(
-                  'assets/images/logo0.png', // Logo path'ini kendi projenize göre güncelleyin
-                  height: 180,
-                  width: 180,
+      builder:
+          (context, viewModel, child) => Scaffold(
+            body: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        'assets/images/logo0.png', // Logo path'ini kendi projenize göre güncelleyin
+                        height: 180,
+                        width: 180,
+                      ),
+                      const SizedBox(height: 32),
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'E-posta',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'E-posta giriniz';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Geçerli bir e-posta giriniz';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
+                        keyboardType: TextInputType.visiblePassword,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Şifre',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Şifre giriniz';
+                          }
+                          if (value.length < 6) {
+                            return 'Şifre en az 6 karakter olmalı';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (viewModel.errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          viewModel.errorMessage!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: viewModel.isLoading ? null : _login,
+                          child:
+                              viewModel.isLoading
+                                  ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                  : const Text('Giriş Yap'),
+                        ),
+                      ),
+                      const SizedBox(height: 16), // Butonlar arası boşluk
+                      // Kaydol Butonu
+                      TextButton(
+                        onPressed:
+                            viewModel.isLoading ? null : _navigateToRegister,
+                        child: const Text(
+                          'Hesabın yok mu? Kaydol',
+                          style: TextStyle(fontSize: 15),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                  const SizedBox(height: 32),
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'E-posta',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'E-posta giriniz';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Geçerli bir e-posta giriniz';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    keyboardType: TextInputType.visiblePassword,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Şifre',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Şifre giriniz';
-                      }
-                      if (value.length < 6) {
-                        return 'Şifre en az 6 karakter olmalı';
-                      }
-                      return null;
-                    },
-                  ),
-                  if (viewModel.errorMessage != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      viewModel.errorMessage!,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: viewModel.isLoading ? null : _login,
-                      child: viewModel.isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(color: Colors.white),
-                            )
-                          : const Text('Giriş Yap'),
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 }
