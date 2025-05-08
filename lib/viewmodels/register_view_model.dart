@@ -67,7 +67,7 @@ class RegisterViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final userCredential = await AuthService().signInWithEmailAndPassword(
+      final userCredential = await AuthService().createUserWithEmailAndPassword(
         email: _email,
         password: _password,
       );
