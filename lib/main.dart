@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sesini_duyan_var/views/about_view.dart';
 import 'package:sesini_duyan_var/views/alert_view.dart';
 import 'package:sesini_duyan_var/views/bluetooth_chat_view.dart';
-import 'package:sesini_duyan_var/views/bluetooth_view.dart';
+import 'package:sesini_duyan_var/views/bluetooth_chatlist_view.dart';
 import 'package:sesini_duyan_var/views/home_view.dart';
 import 'package:sesini_duyan_var/views/kvkk_view.dart';
 import 'package:sesini_duyan_var/views/settings_view.dart';
