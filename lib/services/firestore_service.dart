@@ -1,12 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Mevcut kullanıcıya erişmek için
-// RegisterModel'i import ediyoruz. Dosya yolunuzu kontrol edin.
-// Eğer models klasörü lib altındaysa:
-import '../models/register_model.dart';
-// Eğer models klasörü services ile aynı seviyedeyse (lib/services, lib/models):
-// import '../models/register_model.dart'; // Bu yol doğru olabilir
-// Eğer models klasörü lib/core/models gibi bir yerdeyse:
-// import '../../core/models/register_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../models/register_model.dart'; // RegisterModel import edildi
+import '../models/location_data_model.dart'; // location_data_model.dart import edildi
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -27,26 +22,19 @@ class FirestoreService {
   Future<void> saveUser({
     required String userId,
     required String email,
-    // RegisterModel'den gelen diğer bilgileri de alacağız.
-    // Bu metodun imzası artık daha genel olabilir veya doğrudan RegisterModel alabilir.
-    // Şimdilik ayrı parametreler olarak bırakalım, AuthService'den bu şekilde çağıracağız.
     required String firstName,
     required String lastName,
     required DateTime dateOfBirth,
     required Gender gender,
-    String? displayNameFromModel, // RegisterModel'den gelen displayName
-    String? photoURL, // Bu hala genel bir parametre olarak kalabilir
+    String? displayNameFromModel,
+    String? photoURL,
     Map<String, dynamic>? additionalData,
   }) async {
     try {
-      final DocumentReference userDocRef = _firestore
-          .collection('users')
-          .doc(userId);
+      final DocumentReference userDocRef =
+      _firestore.collection('users').doc(userId);
 
-      // Yaşı hesapla
       final int age = _calculateAge(dateOfBirth);
-
-      // displayName'i oluştur: Eğer modelden gelmiyorsa ad ve soyaddan oluştur.
       final String displayName = displayNameFromModel ?? '$firstName $lastName';
 
       final Map<String, dynamic> userData = {
@@ -55,15 +43,9 @@ class FirestoreService {
         'displayName': displayName.trim(),
         'firstName': firstName.trim(),
         'lastName': lastName.trim(),
-        'dateOfBirth': Timestamp.fromDate(
-          dateOfBirth,
-        ), // DateTime'ı Timestamp'e çevir
-        'age': age, // Hesaplanan yaş
-        'gender':
-            gender
-                .toString()
-                .split('.')
-                .last, // Enum'ı string'e çevir (örn: "male")
+        'dateOfBirth': Timestamp.fromDate(dateOfBirth),
+        'age': age,
+        'gender': gender.toString().split('.').last,
         'photoURL': photoURL ?? '',
         'createdAt': FieldValue.serverTimestamp(),
         'lastLogin': FieldValue.serverTimestamp(),
@@ -87,11 +69,11 @@ class FirestoreService {
   }
 
   Future<DocumentSnapshot<Map<String, dynamic>>?> getUserData(
-    String userId,
-  ) async {
+      String userId,
+      ) async {
     try {
       final DocumentSnapshot<Map<String, dynamic>> userDoc =
-          await _firestore.collection('users').doc(userId).get();
+      await _firestore.collection('users').doc(userId).get();
       if (userDoc.exists) {
         return userDoc;
       } else {
@@ -118,9 +100,9 @@ class FirestoreService {
   }
 
   Future<void> updateUserData(
-    String userId,
-    Map<String, Object?> dataToUpdate,
-  ) async {
+      String userId,
+      Map<String, Object?> dataToUpdate,
+      ) async {
     try {
       await _firestore.collection('users').doc(userId).update(dataToUpdate);
       print('Kullanıcı verisi başarıyla güncellendi: $userId');
@@ -134,8 +116,8 @@ class FirestoreService {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> getCollectionStream(
-    String collectionPath,
-  ) {
+      String collectionPath,
+      ) {
     return _firestore.collection(collectionPath).snapshots();
   }
 
@@ -149,9 +131,9 @@ class FirestoreService {
         'createdAt': FieldValue.serverTimestamp(),
       };
       final CollectionReference<Map<String, dynamic>> typedCollectionRef =
-          _firestore.collection(collectionPath);
+      _firestore.collection(collectionPath);
       final DocumentReference<Map<String, dynamic>> docRef =
-          await typedCollectionRef.add(dataWithTimestamp);
+      await typedCollectionRef.add(dataWithTimestamp);
       print('"$collectionPath" koleksiyonuna doküman eklendi: ${docRef.id}');
       return docRef;
     } on FirebaseException catch (e) {
@@ -180,6 +162,30 @@ class FirestoreService {
     } catch (e) {
       print('Genel doküman silme hatası ($collectionPath/$documentId): $e');
       throw Exception('Beklenmedik bir hata oluştu.');
+    }
+  }
+  // Konum verisini Firestore'a kaydetme fonksiyonu
+  Future<void> recordLocationDataModel(LocationDataModel locationData) async {
+    try {
+      // Kullanıcının ID'sini al (eğer varsa) veya benzersiz bir ID oluştur
+      String userId = locationData.userId ??
+          _firestore.collection('users').doc().id; // Yeni kullanıcı id
+
+      // "users" koleksiyonuna eriş ve kullanıcının ID'si ile bir belge oluştur/güncelle
+      final DocumentReference userDocRef = _firestore.collection('users').doc(userId);
+      await userDocRef.set({
+        'location': {
+          'latitude': locationData.latitude,
+          'longitude': locationData.longitude,
+          'timestamp': locationData.timestamp,
+          'deviceId': locationData.deviceId,
+        },
+      }, SetOptions(merge: true)); // Merge seçeneği ile veriyi üzerine yazmaz, birleştirir
+
+      print('Konum verisi Firestore\'a başarıyla kaydedildi. Kullanıcı ID: $userId');
+    } catch (e) {
+      print('Konum verisi Firestore\'a kaydedilirken hata: $e');
+      rethrow; // Hatayı yukarıya fırlat
     }
   }
 }
