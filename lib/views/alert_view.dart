@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:sesini_duyan_var/viewmodels/send_location_model.dart';
-import 'package:sesini_duyan_var/services/firestore_service.dart';
-import 'package:sesini_duyan_var/models/location_data_model.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:geocoding/geocoding.dart'; // Import the geocoding package
+import 'package:geocoding/geocoding.dart';
 
 class AlertPage extends StatefulWidget {
   const AlertPage({Key? key}) : super(key: key);
@@ -18,8 +15,8 @@ class _AlertPageState extends State<AlertPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _animation;
-  final _firestoreService = FirestoreService();
-  String _locationName = 'Konum aranıyor...'; // Add location name variable
+  String _locationName = 'Konum aranıyor...';
+  String _uploadStatusMessage = 'Verileriniz Merkeze Gönderiliyor...';
 
   @override
   void initState() {
@@ -29,16 +26,74 @@ class _AlertPageState extends State<AlertPage>
       duration: const Duration(milliseconds: 500),
     )..repeat(reverse: true);
 
-    _animation =
-        Tween<double>(begin: 0.0, end: 1.0).animate(_animationController);
+    _animation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(_animationController);
 
-    _uploadLocationToFirestore(context);
-    _getLocationName(context); // Get location name
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _triggerLocationOperations();
+    });
   }
 
+  Future<void> _triggerLocationOperations() async {
+    final locationViewModel = Provider.of<SendLocationViewModel>(
+      context,
+      listen: false,
+    );
+
+    if (mounted) {
+      print("AlertPage: ViewModel'in getKonum metodu tetikleniyor.");
+      // SendLocationViewModel'deki getKonum metodu, Firestore'a gönderme dahil tüm işlemleri yapar.
+      // Bu metodun içinde userId'yi doğru aldığından ve LocationDataModel'i
+      // deviceId olmadan oluşturduğundan emin olun.
+      await locationViewModel.getKonum();
+      if (mounted) {
+        await _updateLocationNameFromViewModel();
+      }
+      if (mounted && locationViewModel.konumBilgisi.contains("başarıyla")) {
+        setState(() {
+          _uploadStatusMessage = "Konumunuz başarıyla merkeze iletildi.";
+        });
+      } else if (mounted &&
+          (locationViewModel.konumBilgisi.contains("HATA") ||
+              locationViewModel.konumBilgisi.contains("sorun") ||
+              locationViewModel.konumBilgisi.contains("bulunamadı"))) {
+        // ViewModel'den gelen hata mesajını veya daha genel bir mesajı kullan
+        setState(() {
+          _uploadStatusMessage =
+              locationViewModel.konumBilgisi.isNotEmpty
+                  ? locationViewModel.konumBilgisi
+                  : "Konum gönderilirken bir sorun oluştu.";
+        });
+      }
+    }
+  }
+
+  // Bu metod artık _triggerLocationOperations içinde doğrudan locationViewModel.getKonum()
+  // çağrıldığı için genellikle gereksiz olacaktır. Eğer AlertPage'in kendi başına,
+  // ViewModel'in genel akışından bağımsız olarak konum göndermesi gerekiyorsa kullanılabilir.
+  // Şimdilik, ViewModel'in merkezi mantığına güveniyoruz.
+  // Eğer bu metodu kullanacaksanız, deviceId ile ilgili kısımları çıkardığınızdan emin olun.
+  /*
   Future<void> _uploadLocationToFirestore(BuildContext context) async {
-    final locationViewModel =
-    Provider.of<SendLocationViewModel>(context, listen: false);
+    final locationViewModel = Provider.of<SendLocationViewModel>(
+      context,
+      listen: false,
+    );
+
+    final String? userId = locationViewModel.currentUserId; // ViewModel'den userId alınıyor
+
+    if (userId == null || userId.isEmpty) {
+      print('AlertPage: Kullanıcı ID alınamadı, Firestore\'a konum kaydedilemedi.');
+      if (mounted) {
+        setState(() {
+          _uploadStatusMessage = "Kullanıcı kimliği bulunamadığı için konum gönderilemedi.";
+        });
+      }
+      return;
+    }
+    // deviceId ile ilgili kontrol ve alım kaldırıldı.
 
     if (locationViewModel.latitude != null &&
         locationViewModel.longitude != null) {
@@ -46,49 +101,92 @@ class _AlertPageState extends State<AlertPage>
         latitude: locationViewModel.latitude!,
         longitude: locationViewModel.longitude!,
         timestamp: Timestamp.now(),
+        userId: userId,
+        // deviceId: null, // deviceId alanı LocationDataModel'den kaldırıldıysa bu satıra gerek yok
       );
 
       try {
-        await _firestoreService.recordLocationDataModel(locationData);
-        print('Konum verisi Firestore\'a başarıyla kaydedildi.');
+        setState(() { _uploadStatusMessage = 'Konumunuz merkeze gönderiliyor...';});
+        // FirestoreService'teki updateUserLocationAsFields metodunun da
+        // deviceId beklemediğinden veya deviceId null ise sorun çıkarmadığından emin olun.
+        await _firestoreService.updateUserLocationAsFields(locationData);
+        print('AlertPage: Konum verisi Firestore\'a başarıyla kaydedildi.');
+        if (mounted) {
+          setState(() {
+            _uploadStatusMessage = "Konumunuz başarıyla merkeze iletildi.";
+          });
+        }
       } catch (e) {
-        print('Konum verisi Firestore\'a kaydedilirken hata: $e');
+        print('AlertPage: Konum verisi Firestore\'a kaydedilirken hata: $e');
+        if (mounted) {
+          setState(() {
+            _uploadStatusMessage = "Konum gönderilirken bir sorun oluştu.";
+          });
+        }
       }
     } else {
-      print('Konum verisi alınamadı, Firestore\'a kaydedilmedi.');
+      print('AlertPage: Konum verisi (enlem/boylam) alınamadı, Firestore\'a kaydedilmedi.');
+       if (mounted) {
+        setState(() {
+          _uploadStatusMessage = "Konum bilgisi alınamadığı için gönderilemedi.";
+        });
+      }
     }
   }
+  */
 
-  // Function to get location name from coordinates
-  Future<void> _getLocationName(BuildContext context) async {
-    final locationViewModel =
-    Provider.of<SendLocationViewModel>(context, listen: false);
+  Future<void> _updateLocationNameFromViewModel() async {
+    final locationViewModel = Provider.of<SendLocationViewModel>(
+      context,
+      listen: false,
+    );
     if (locationViewModel.latitude != null &&
         locationViewModel.longitude != null) {
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
-            locationViewModel.latitude!, locationViewModel.longitude!);
-
-        if (placemarks.isNotEmpty) {
+          locationViewModel.latitude!,
+          locationViewModel.longitude!,
+        );
+        if (mounted && placemarks.isNotEmpty) {
           Placemark place = placemarks.first;
+          String street = place.street ?? '';
+          String subLocality = place.subLocality ?? '';
+          String locality = place.locality ?? '';
+          String administrativeArea = place.administrativeArea ?? '';
+          String country = place.country ?? '';
+
+          // Sadece dolu olan alanları birleştir
+          List<String> addressParts =
+              [
+                street,
+                subLocality,
+                locality,
+                administrativeArea,
+                country,
+              ].where((part) => part.isNotEmpty).toList();
+
           setState(() {
-            _locationName =
-            '${place.street}, ${place.locality}, ${place.administrativeArea}, ${place.country}';
+            _locationName = addressParts.join(', ');
+            if (_locationName.isEmpty) {
+              _locationName = 'Detaylı adres bilgisi bulunamadı.';
+            }
           });
-        } else {
+        } else if (mounted) {
           setState(() {
-            _locationName = 'Konum Bulunamadı';
+            _locationName = 'Adres bulunamadı';
           });
         }
       } catch (e) {
         print('Konum adı alınırken hata: $e');
-        setState(() {
-          _locationName = 'Konum Bulunamadı';
-        });
+        if (mounted) {
+          setState(() {
+            _locationName = 'Adres alınırken sorun oluştu';
+          });
+        }
       }
-    } else {
+    } else if (mounted) {
       setState(() {
-        _locationName = 'Konum Bilgisi Yok';
+        _locationName = 'Konum bilgisi alınamıyor';
       });
     }
   }
@@ -102,10 +200,7 @@ class _AlertPageState extends State<AlertPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // final primaryColor = theme.primaryColor;
-    final Color backgroundColor =
-    const Color.fromRGBO(150, 170, 180, 1); // Daha koyu ve pastel mavi/gri (96AABB)
-    final locationViewModel = Provider.of<SendLocationViewModel>(context);
+    final Color backgroundColor = const Color.fromRGBO(150, 170, 180, 1);
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
 
@@ -155,7 +250,7 @@ class _AlertPageState extends State<AlertPage>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Konumunuz: $_locationName', // Display the location name with "Konumunuz:"
+                  'Konumunuz: $_locationName',
                   style: theme.textTheme.titleLarge?.copyWith(
                     color: Colors.white,
                     fontSize: 24,
@@ -163,13 +258,41 @@ class _AlertPageState extends State<AlertPage>
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
-                Text(
-                  'Verileriniz Merkeze Gönderiliyor...',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: Colors.white70,
-                    fontStyle: FontStyle.italic,
-                  ),
-                  textAlign: TextAlign.center,
+                Consumer<SendLocationViewModel>(
+                  builder: (context, vm, child) {
+                    // ViewModel'deki ana mesajı kullanabiliriz veya AlertPage'in kendi durum mesajını
+                    // Öncelik AlertPage'in kendi _uploadStatusMessage'ı olabilir.
+                    String messageToShow = _uploadStatusMessage; // Varsayılan
+
+                    // ViewModel'den gelen daha spesifik durumları kontrol et
+                    if (vm.isInitializing) {
+                      messageToShow = "Başlatılıyor...";
+                    } else if (vm.isFetchingLocation) {
+                      messageToShow = "Konumunuz alınıyor...";
+                    } else if (vm.isUploadingLocation) {
+                      messageToShow = "Konumunuz merkeze gönderiliyor...";
+                    } else if (vm.konumBilgisi.contains(
+                          "başarıyla güncellendi",
+                        ) ||
+                        vm.konumBilgisi.contains("Firestore'a kaydedildi")) {
+                      messageToShow = "Konumunuz başarıyla merkeze iletildi.";
+                    } else if (vm.konumBilgisi.contains("HATA") ||
+                        vm.konumBilgisi.contains("sorun") ||
+                        vm.konumBilgisi.contains("bulunamadı") ||
+                        vm.konumBilgisi.contains("yapılamıyor")) {
+                      messageToShow =
+                          vm.konumBilgisi; // ViewModel'den gelen hata/bilgi mesajı
+                    }
+
+                    return Text(
+                      messageToShow,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: Colors.white70,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      textAlign: TextAlign.center,
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -188,4 +311,3 @@ class _AlertPageState extends State<AlertPage>
     );
   }
 }
-

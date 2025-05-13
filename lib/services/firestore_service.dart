@@ -31,8 +31,9 @@ class FirestoreService {
     Map<String, dynamic>? additionalData,
   }) async {
     try {
-      final DocumentReference userDocRef =
-      _firestore.collection('users').doc(userId);
+      final DocumentReference userDocRef = _firestore
+          .collection('users')
+          .doc(userId);
 
       final int age = _calculateAge(dateOfBirth);
       final String displayName = displayNameFromModel ?? '$firstName $lastName';
@@ -69,11 +70,11 @@ class FirestoreService {
   }
 
   Future<DocumentSnapshot<Map<String, dynamic>>?> getUserData(
-      String userId,
-      ) async {
+    String userId,
+  ) async {
     try {
       final DocumentSnapshot<Map<String, dynamic>> userDoc =
-      await _firestore.collection('users').doc(userId).get();
+          await _firestore.collection('users').doc(userId).get();
       if (userDoc.exists) {
         return userDoc;
       } else {
@@ -100,9 +101,9 @@ class FirestoreService {
   }
 
   Future<void> updateUserData(
-      String userId,
-      Map<String, Object?> dataToUpdate,
-      ) async {
+    String userId,
+    Map<String, Object?> dataToUpdate,
+  ) async {
     try {
       await _firestore.collection('users').doc(userId).update(dataToUpdate);
       print('Kullanıcı verisi başarıyla güncellendi: $userId');
@@ -116,8 +117,8 @@ class FirestoreService {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> getCollectionStream(
-      String collectionPath,
-      ) {
+    String collectionPath,
+  ) {
     return _firestore.collection(collectionPath).snapshots();
   }
 
@@ -131,9 +132,9 @@ class FirestoreService {
         'createdAt': FieldValue.serverTimestamp(),
       };
       final CollectionReference<Map<String, dynamic>> typedCollectionRef =
-      _firestore.collection(collectionPath);
+          _firestore.collection(collectionPath);
       final DocumentReference<Map<String, dynamic>> docRef =
-      await typedCollectionRef.add(dataWithTimestamp);
+          await typedCollectionRef.add(dataWithTimestamp);
       print('"$collectionPath" koleksiyonuna doküman eklendi: ${docRef.id}');
       return docRef;
     } on FirebaseException catch (e) {
@@ -164,28 +165,29 @@ class FirestoreService {
       throw Exception('Beklenmedik bir hata oluştu.');
     }
   }
-  // Konum verisini Firestore'a kaydetme fonksiyonu
-  Future<void> recordLocationDataModel(LocationDataModel locationData) async {
+
+  Future<void> updateUserLocationAsFields(
+    LocationDataModel locationData,
+  ) async {
+    final String? userId = locationData.userId;
+
     try {
-      // Kullanıcının ID'sini al (eğer varsa) veya benzersiz bir ID oluştur
-      String userId = locationData.userId ??
-          _firestore.collection('users').doc().id; // Yeni kullanıcı id
+      final DocumentReference userDocRef = _firestore
+          .collection('users')
+          .doc(userId);
 
-      // "users" koleksiyonuna eriş ve kullanıcının ID'si ile bir belge oluştur/güncelle
-      final DocumentReference userDocRef = _firestore.collection('users').doc(userId);
-      await userDocRef.set({
-        'location': {
-          'latitude': locationData.latitude,
-          'longitude': locationData.longitude,
-          'timestamp': locationData.timestamp,
-          'deviceId': locationData.deviceId,
-        },
-      }, SetOptions(merge: true)); // Merge seçeneği ile veriyi üzerine yazmaz, birleştirir
+      await userDocRef.update({
+        'location': GeoPoint(locationData.latitude, locationData.longitude),
+        'lastLocationUpdate': FieldValue.serverTimestamp(),
+      });
 
-      print('Konum verisi Firestore\'a başarıyla kaydedildi. Kullanıcı ID: $userId');
+      print('Kullanıcının konumu başarıyla güncellendi.');
+    } on FirebaseException catch (e) {
+      print('Firestore konum güncelleme hatası: ${e.code} - ${e.message}');
+      throw Exception('Konum güncellenirken bir sorun oluştu.');
     } catch (e) {
-      print('Konum verisi Firestore\'a kaydedilirken hata: $e');
-      rethrow; // Hatayı yukarıya fırlat
+      print('Genel konum güncelleme hatası: $e');
+      throw Exception('Beklenmedik bir hata oluştu.');
     }
   }
 }
