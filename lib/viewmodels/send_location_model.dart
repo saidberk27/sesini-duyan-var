@@ -1,88 +1,145 @@
+// send_location_model.dart
+
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import '../models/location_data_model.dart';
-import '../services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // SharedPreferences için eklendi
+
+import '../models/location_data_model.dart';
+import '../services/firestore_service.dart';
+
+// SharedPreferences'ta userId'yi saklamak için kullanılacak anahtar
+// Bu anahtar main.dart'taki callbackDispatcher içinde de kullanılacak.
+const String userIdSharedPrefKey = 'current_user_id_for_background';
 
 class SendLocationViewModel extends ChangeNotifier {
-  // --- Durum Değişkenleri ---
   String _konumBilgisiMesaji = "Konum bilgisi bekleniyor...";
   bool _isInitializing = true;
   bool _isFetchingLocation = false;
   bool _isUploadingLocation = false;
 
-  // --- Servisler ve Kimlikler ---
   final FirestoreService _firestore = FirestoreService();
-  final FirebaseAuth _auth = FirebaseAuth.instance; // FirebaseAuth örneği
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  StreamSubscription<User?>? _authStateSubscription;
 
   double? _latitude;
   double? _longitude;
-  String? _currentUserId; // Giriş yapmış kullanıcının Firebase UID'si
+  String? _currentUserId;
 
-  // --- Getter'lar ---
   String get konumBilgisi => _konumBilgisiMesaji;
   bool get isInitializing => _isInitializing;
   bool get isFetchingLocation => _isFetchingLocation;
   bool get isUploadingLocation => _isUploadingLocation;
-
   double? get latitude => _latitude;
   double? get longitude => _longitude;
-  String? get currentUserId =>
-      _currentUserId; // Bu, giriş yapmış kullanıcının UID'si olacak
+  String? get currentUserId => _currentUserId;
 
-  // --- Constructor ---
   SendLocationViewModel() {
     print("SendLocationViewModel oluşturuldu.");
     _initializeViewModel();
   }
 
-  // --- Başlatma Metodu (GÜNCELLENDİ: userId doğrudan Auth'dan alınacak) ---
   Future<void> _initializeViewModel() async {
-    print("ViewModel başlatılıyor: Kullanıcı oturumu kontrol edilecek...");
+    print("ViewModel başlatılıyor: Kullanıcı oturumu dinlenecek...");
     _isInitializing = true;
     _konumBilgisiMesaji = "Kullanıcı oturumu kontrol ediliyor...";
     notifyListeners();
 
-    // 1. Kullanıcı ID'sini (UID) doğrudan Firebase Authentication'dan al
-    User? user = _auth.currentUser;
-    if (user != null) {
-      _currentUserId = user.uid;
-      print("Giriş yapmış kullanıcı ID'si (UID) alındı: $_currentUserId");
-      // Kullanıcı ID'si alındıktan sonra ilk konumu almayı deneyebiliriz.
-      _konumBilgisiMesaji = "Kullanıcı oturumu aktif. İlk konum alınıyor...";
-      notifyListeners();
-      await getKonum(isInitialCall: true);
-    } else {
-      _currentUserId = null;
-      _konumBilgisiMesaji =
-          "Giriş yapmış kullanıcı bulunamadı. Konum göndermek için lütfen giriş yapın.";
-      print("Kullanıcı girişi yapılmamış.");
-      // Bu durumda getKonum'u çağırmıyoruz veya UI'da bir uyarı gösteriyoruz.
-    }
+    _authStateSubscription = _auth.authStateChanges().listen((
+      User? user,
+    ) async {
+      print("Auth durumu değişti. Yeni Firebase kullanıcısı: ${user?.uid}");
+      _currentUserId = user?.uid;
+      final prefs = await SharedPreferences.getInstance();
 
-    _isInitializing = false;
-    // notifyListeners() zaten getKonum içinde veya yukarıdaki if/else bloklarında çağrılıyor.
-    // Eğer getKonum çağrılmadıysa, son mesajın UI'a yansıması için burada bir kez daha çağrılabilir.
-    if (_currentUserId == null) {
+      if (_currentUserId != null) {
+        // Kullanıcı giriş yaptı, UID'yi SharedPreferences'a kaydet
+        await prefs.setString(userIdSharedPrefKey, _currentUserId!);
+        print("Kullanıcı ID ($currentUserId) SharedPreferences'a kaydedildi.");
+        _konumBilgisiMesaji = "Kullanıcı oturumu aktif ($_currentUserId).";
+        if (_isInitializing || !_isFetchingLocation) {
+          print("Auth durumu aktif, ilk getKonum çağrılıyor...");
+          await getKonum(isInitialCall: true);
+        }
+      } else {
+        // Kullanıcı çıkış yaptı, UID'yi SharedPreferences'tan sil
+        await prefs.remove(userIdSharedPrefKey);
+        print("Kullanıcı ID SharedPreferences'tan silindi.");
+        _konumBilgisiMesaji =
+            "Giriş yapmış kullanıcı bulunamadı. Konum göndermek için lütfen giriş yapın.";
+        print("Kullanıcı oturumu kapalı.");
+      }
+      _isInitializing = false; // Auth state geldi, başlatma tamamlandı.
+      notifyListeners();
+    });
+
+    // Dinleyici hemen tetiklenmezse diye mevcut kullanıcıyı da kontrol et
+    User? initialUser = _auth.currentUser;
+    if (initialUser != null && _currentUserId == null) {
+      // Listener henüz _currentUserId'yi set etmediyse
+      print(
+        "Başlangıçta aktif Firebase kullanıcısı bulundu: ${initialUser.uid}",
+      );
+      _currentUserId = initialUser.uid;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(userIdSharedPrefKey, _currentUserId!);
+      print(
+        "Başlangıç Kullanıcı ID ($currentUserId) SharedPreferences'a kaydedildi.",
+      );
+      _konumBilgisiMesaji = "Kullanıcı oturumu aktif ($_currentUserId).";
+      if (_isInitializing || !_isFetchingLocation) {
+        print("Başlangıçta aktif kullanıcı için ilk getKonum çağrılıyor...");
+        await getKonum(isInitialCall: true);
+      }
+      _isInitializing = false;
+      notifyListeners();
+    } else if (initialUser == null &&
+        _currentUserId == null &&
+        _isInitializing) {
+      // Başlangıçta kullanıcı yok ve listener da henüz tetiklenmediyse
+      _isInitializing = false;
+      _konumBilgisiMesaji = "Giriş yapmış kullanıcı bulunamadı.";
+      final prefs =
+          await SharedPreferences.getInstance(); // Emin olmak için sil
+      await prefs.remove(userIdSharedPrefKey);
       notifyListeners();
     }
   }
 
-  // --- Ana Konum Alma ve Firestore'a Gönderme Metodu ---
+  @override
+  void dispose() {
+    print("SendLocationViewModel dispose ediliyor.");
+    _authStateSubscription?.cancel();
+    super.dispose();
+  }
+
+  // Kullanıcının manuel olarak çıkış yapması için bir metod
+  Future<void> signOut() async {
+    print("signOut metodu çağrıldı.");
+    await _auth
+        .signOut(); // Firebase'den çıkış yapar, bu _authStateSubscription'ı tetikler.
+    // _authStateSubscription içindeki logic SharedPreferences'ı temizleyecektir.
+    // _currentUserId otomatik olarak null olur ve notifyListeners çağrılır.
+    // Ekstra bir SharedPreferences temizliği veya _currentUserId = null ataması burada gerekmez,
+    // çünkü authStateChanges dinleyicisi bunu halleder.
+    // Ancak, hemen UI güncellemesi için _konumBilgisiMesaji'nı set edebiliriz:
+    _konumBilgisiMesaji = "Çıkış yapıldı. Tekrar giriş yapınız.";
+    notifyListeners(); // UI'ı hemen güncellemek için
+  }
+
   Future<void> getKonum({bool isInitialCall = false}) async {
-    print("getKonum fonksiyonu çağrıldı. İlk çağrı: $isInitialCall");
+    print(
+      "getKonum fonksiyonu çağrıldı. UserID: $_currentUserId. İlk çağrı: $isInitialCall",
+    );
 
     if (_isInitializing && !isInitialCall) {
-      // Eğer hala başlatılıyorsa ve bu ilk çağrı değilse bekleme
-      print("getKonum: ViewModel hala başlatılıyor, bekleniyor.");
-      await Future.delayed(const Duration(milliseconds: 200));
-      if (_isInitializing) {
-        // Hala başlatılıyorsa çık
-        print("getKonum: Başlatma hala bitmedi, çıkılıyor.");
-        return;
-      }
+      print("getKonum: ViewModel hala başlatılıyor, işlem ertelendi.");
+      _konumBilgisiMesaji = "ViewModel başlatılıyor, lütfen bekleyin...";
+      notifyListeners();
+      return;
     }
 
     if (_isFetchingLocation && !isInitialCall) {
@@ -90,14 +147,10 @@ class SendLocationViewModel extends ChangeNotifier {
       return;
     }
 
-    // Kullanıcı ID'si kesinlikle olmalı (giriş yapmış kullanıcı senaryosu)
-    // _initializeViewModel'de bu kontrol yapıldı ve userId null ise getKonum çağrılmıyor (veya uyarı veriliyor).
-    // Yine de bir güvenlik önlemi olarak burada da kontrol edelim.
     if (_currentUserId == null || _currentUserId!.isEmpty) {
       _konumBilgisiMesaji =
           "KONUM GÖNDERİLEMEDİ: Geçerli bir kullanıcı oturumu bulunamadı. Lütfen giriş yapın.";
       print("HATA: getKonum çağrıldı ancak _currentUserId null veya boş.");
-      // _isFetchingLocation = false; // Eğer işlem başlamadan bitiyorsa
       notifyListeners();
       return;
     }
@@ -108,7 +161,6 @@ class SendLocationViewModel extends ChangeNotifier {
 
     try {
       await requestBackgroundLocationPermission();
-
       bool servisAktif = await Geolocator.isLocationServiceEnabled();
       if (!servisAktif) {
         _konumBilgisiMesaji = "Konum servisi kapalı. Lütfen açın.";
@@ -116,7 +168,6 @@ class SendLocationViewModel extends ChangeNotifier {
         notifyListeners();
         return;
       }
-
       LocationPermission izin = await Geolocator.checkPermission();
       if (izin == LocationPermission.denied) {
         izin = await Geolocator.requestPermission();
@@ -135,16 +186,11 @@ class SendLocationViewModel extends ChangeNotifier {
         return;
       }
 
-      print("Geolocator.getCurrentPosition çağrılıyor...");
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
       );
-      print(
-        "Konum başarıyla alındı: Lat: ${position.latitude}, Lon: ${position.longitude}",
-      );
-
       _latitude = position.latitude;
       _longitude = position.longitude;
       _konumBilgisiMesaji =
@@ -155,18 +201,16 @@ class SendLocationViewModel extends ChangeNotifier {
       _konumBilgisiMesaji += "\nFirestore'a gönderiliyor...";
       notifyListeners();
 
-      // LocationDataModel oluşturulurken deviceId artık gönderilmiyor (veya null gönderiliyor)
-      // Modelinizdeki deviceId alanını nullable (String?) yapın veya kaldırın.
-      // Şimdilik null gönderdiğimizi varsayalım, FirestoreService bunu ele alacaktır.
+      // LocationDataModel'den deviceId alanı kaldırıldıysa, aşağıdaki gibi olmalı:
       final locationData = LocationDataModel(
         latitude: _latitude!,
         longitude: _longitude!,
         timestamp: Timestamp.now(),
-        userId: _currentUserId!, // Giriş yapmış kullanıcının UID'si
+        userId: _currentUserId!,
+        // deviceId: null, // Bu satır ya null olur ya da modelden tamamen kaldırılır.
       );
-
       debugPrint(
-        "Firestore'a Gönderilecek Model: UserID: ${locationData.userId}}, Lat: ${locationData.latitude}, Lon: ${locationData.longitude}",
+        "Firestore'a Gönderilecek Model: UserID: ${locationData.userId}, Lat: ${locationData.latitude}, Lon: ${locationData.longitude}",
       );
 
       await _firestore.updateUserLocationAsFields(locationData);
@@ -185,8 +229,8 @@ class SendLocationViewModel extends ChangeNotifier {
     }
   }
 
-  // --- Mevcut getCurrentLocation Metodunuz (Sadece konumu alır, göndermez) ---
   Future<void> getCurrentLocation() async {
+    // ... (Bu metodun içeriği aynı kalabilir) ...
     print("getCurrentLocation çağrıldı");
     _isFetchingLocation = true;
     _konumBilgisiMesaji = "Anlık konum alınıyor...";
@@ -215,7 +259,6 @@ class SendLocationViewModel extends ChangeNotifier {
           return;
         }
       }
-
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -225,9 +268,7 @@ class SendLocationViewModel extends ChangeNotifier {
       _longitude = position.longitude;
       _konumBilgisiMesaji =
           "Anlık Konum: ${_latitude?.toStringAsFixed(5)}, ${_longitude?.toStringAsFixed(5)}";
-      print("Anlık konum başarıyla alındı: Lat: $_latitude, Lon: $_longitude");
     } catch (e) {
-      print("getCurrentLocation sırasında hata: $e");
       _konumBilgisiMesaji = "Anlık konum alınamadı.";
       _latitude = null;
       _longitude = null;
@@ -235,22 +276,12 @@ class SendLocationViewModel extends ChangeNotifier {
     _isFetchingLocation = false;
     notifyListeners();
   }
-} // SendLocationViewModel sınıfının sonu
+}
 
-// --- Arka Plan Konum İzni İsteme Fonksiyonu ---
 Future<void> requestBackgroundLocationPermission() async {
+  // ... (Bu fonksiyon aynı kalabilir) ...
   var status = await Permission.locationAlways.status;
   if (!status.isGranted) {
-    print("Arka plan konum izni isteniyor...");
-    var result = await Permission.locationAlways.request();
-    if (result.isGranted) {
-      print("Arka plan konum izni verildi.");
-    } else if (result.isPermanentlyDenied) {
-      print("Arka plan konum izni kalıcı olarak reddedildi.");
-    } else {
-      print("Arka plan konum izni reddedildi.");
-    }
-  } else {
-    print("Arka plan konum izni zaten verilmiş.");
+    await Permission.locationAlways.request();
   }
 }
