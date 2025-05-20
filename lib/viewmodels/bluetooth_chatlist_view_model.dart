@@ -1,131 +1,243 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
-import 'package:permission_handler/permission_handler.dart';
-// BluetoothService'i import etmemiz gerekiyor. Dosya yolunuzu kontrol edin.
-// Eğer services klasörü lib altındaysa ve viewmodels de lib altındaysa:
+import 'package:nearby_connections/nearby_connections.dart';
 import '../services/bluetooth_service.dart';
+import '../models/connected_device.dart';
+import '../models/chat_message.dart';
 
-class BluetoothListViewModel extends ChangeNotifier {
-  final BluetoothService _bluetoothService = BluetoothService();
-
-  List<BluetoothDiscoveryResult> _discoveredDevices = [];
-  List<BluetoothDiscoveryResult> get discoveredDevices => _discoveredDevices;
-
-  String? _errorMessage;
-  String? get errorMessage => _errorMessage;
-
+class ChatListViewModel extends ChangeNotifier {
+  final BluetoothService _bluetoothService;
+  bool _isAdvertising = false;
   bool _isDiscovering = false;
+  List<ConnectedDevice> _connectedDevices = [];
+  String? _selectedDeviceId;
+  String? _error;
+  Map<String, List<ChatMessage>> _messages = {};
+
+  ChatListViewModel(this._bluetoothService);
+
+  // Getters
+  bool get isAdvertising => _isAdvertising;
   bool get isDiscovering => _isDiscovering;
+  List<ConnectedDevice> get connectedDevices => _connectedDevices;
+  String? get selectedDeviceId => _selectedDeviceId;
+  String? get error => _error;
+  Map<String, List<ChatMessage>> get messages => _messages;
+  List<ChatMessage> getMessagesForDevice(String deviceId) =>
+      _messages[deviceId] ?? [];
 
-  bool _permissionsGranted = false;
-  bool get permissionsGranted => _permissionsGranted;
+  // Initialize
+  Future<void> initialize() async {
+    try {
+      await _bluetoothService.checkAndRequestPermissions();
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Permission Error: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
 
-  StreamSubscription? _discoveryStreamSubscription;
-
-  BluetoothListViewModel() {
-    // ViewModel oluşturulduğunda Bluetooth'u etkinleştirme isteği
-    _bluetoothService.requestEnableBluetooth().then((enabled) {
-      if (!enabled) {
-        _errorMessage = "Listeleme için Bluetooth etkinleştirilmedi.";
-        notifyListeners();
+  // Advertising
+  Future<void> toggleAdvertising(String userName) async {
+    try {
+      if (_isAdvertising) {
+        await _bluetoothService.stopAdvertising();
+        _isAdvertising = false;
       } else {
-        // Bluetooth açıldıktan sonra izinleri kontrol et/iste (isteğe bağlı ilk yükleme)
-        // Pasif tarama veya eşlenmiş cihazları listeleme burada yapılabilir.
-        // Şimdilik sadece tarama butonuyla aktif tarama yapacağız.
-      }
-    });
+        // İzinleri kontrol et
+        await _bluetoothService.checkAndRequestPermissions();
 
-    // Keşfedilen cihazlar stream'ini dinle
-    _discoveryStreamSubscription = _bluetoothService.discoveryResultStream.listen(
-      (results) {
-        _discoveredDevices = results;
-        if (_discoveredDevices.isEmpty && _isDiscovering) {
-          // Tarama devam ediyor ama henüz cihaz bulunamadıysa bir mesaj gösterilebilir.
-          // _errorMessage = "Cihaz aranıyor...";
-        } else if (_discoveredDevices.isEmpty && !_isDiscovering) {
-          // Tarama bitti ve cihaz bulunamadı.
-          // _errorMessage = "Yakınlarda cihaz bulunamadı.";
+        _isAdvertising = await _bluetoothService.startAdvertising(
+          userName: userName,
+          onConnectionInitiated: _handleConnectionInitiated,
+          onConnectionResult: _handleConnectionResult,
+          onDisconnected: _handleDisconnected,
+        );
+      }
+      _error = null;
+    } catch (e) {
+      _error = e.toString();
+      _isAdvertising = false;
+      // Kullanıcıya izin hatası hakkında bilgi ver
+      if (e.toString().contains('permissions')) {
+        _error = 'Please grant all required permissions from settings';
+      }
+    }
+    notifyListeners();
+  }
+
+  // Discovery
+  Future<void> toggleDiscovery(String userName) async {
+    try {
+      if (_isDiscovering) {
+        await _bluetoothService.stopDiscovery();
+        _isDiscovering = false;
+      } else {
+        _isDiscovering = await _bluetoothService.startDiscovery(
+          userName: userName,
+          onEndpointFound: _handleEndpointFound,
+          onEndpointLost: _handleEndpointLost,
+        );
+      }
+      _error = null;
+    } catch (e) {
+      _error = 'Discovery Error: ${e.toString()}';
+      _isDiscovering = false;
+    }
+    notifyListeners();
+  }
+
+  // Connection Handling Methods
+  void _handleConnectionInitiated(String id, ConnectionInfo info) async {
+    try {
+      await _bluetoothService.acceptConnection(
+        endpointId: id,
+        onPayLoadReceived: (endpointId, payload) {
+          if (payload.type == PayloadType.BYTES) {
+            String message = String.fromCharCodes(payload.bytes!);
+            _addMessage(endpointId, message, false);
+          }
+        },
+        onPayloadTransferUpdate: (endpointId, update) {
+          // Transfer durumu güncellemelerini işle
+          if (update.status == PayloadStatus.FAILURE) {
+            _error = 'Message transfer failed';
+            notifyListeners();
+          }
+        },
+      );
+    } catch (e) {
+      _error = 'Connection acceptance failed: ${e.toString()}';
+      notifyListeners();
+    }
+  }
+
+  void _handleConnectionResult(String id, Status status) {
+    if (status == Status.CONNECTED) {
+      final newDevice = ConnectedDevice(id: id, name: 'Device-$id');
+
+      if (!_connectedDevices.any((device) => device.id == id)) {
+        _connectedDevices.add(newDevice);
+        _selectedDeviceId = id;
+        if (!_messages.containsKey(id)) {
+          _messages[id] = [];
         }
         notifyListeners();
-      },
-      onError: (error) {
-        _errorMessage = "Cihaz arama hatası: $error";
-        _isDiscovering = false;
-        notifyListeners();
-      },
+      }
+    }
+  }
+
+  void _handleDisconnected(String id) {
+    _connectedDevices.removeWhere((device) => device.id == id);
+    if (_selectedDeviceId == id) {
+      _selectedDeviceId =
+          _connectedDevices.isNotEmpty ? _connectedDevices.first.id : null;
+    }
+    notifyListeners();
+  }
+
+  void _handleEndpointFound(String id, String userName, String serviceId) {
+    _requestConnection(id, userName);
+  }
+
+  void _handleEndpointLost(String? id) {
+    if (id != null) {
+      print('Endpoint lost: $id');
+      _handleDisconnected(id);
+    }
+  }
+
+  Future<void> _requestConnection(String id, String userName) async {
+    try {
+      await _bluetoothService.requestConnection(
+        userName: userName,
+        endpointId: id,
+        onConnectionInitiated: _handleConnectionInitiated,
+        onConnectionResult: _handleConnectionResult,
+        onDisconnected: _handleDisconnected,
+      );
+    } catch (e) {
+      _error = 'Connection request failed: ${e.toString()}';
+      notifyListeners();
+    }
+  }
+
+  // Message Handling
+  void _addMessage(String deviceId, String text, bool isMe) {
+    if (!_messages.containsKey(deviceId)) {
+      _messages[deviceId] = [];
+    }
+
+    _messages[deviceId]!.add(
+      ChatMessage(text: text, isMe: isMe, time: DateTime.now()),
     );
-  }
-
-  Future<bool> checkAndRequestPermissions() async {
-    Map<Permission, PermissionStatus> statuses =
-        await [
-          Permission.bluetoothScan,
-          Permission.bluetoothConnect, // Bağlantı için de gerekebilir
-          Permission.locationWhenInUse,
-        ].request();
-
-    _permissionsGranted = statuses.values.every((status) => status.isGranted);
-
-    if (!_permissionsGranted) {
-      _errorMessage = "Bluetooth işlemleri için gerekli izinler verilmedi.";
-      statuses.forEach((permission, status) {
-        if (!status.isGranted) {
-          print("${permission.toString()} izni verilmedi. Durum: $status");
-        }
-      });
-    } else {
-      _errorMessage = null;
-    }
     notifyListeners();
-    return _permissionsGranted;
   }
 
-  Future<void> startDiscovery() async {
-    _errorMessage = null;
-    _isDiscovering = true;
-    _discoveredDevices = []; // Yeni tarama öncesi listeyi temizle
+  Future<void> sendMessage(String message) async {
+    if (_selectedDeviceId == null || message.trim().isEmpty) return;
+
+    try {
+      await _bluetoothService.sendMessage(_selectedDeviceId!, message);
+      _addMessage(_selectedDeviceId!, message, true);
+    } catch (e) {
+      _error = 'Message sending failed: ${e.toString()}';
+      notifyListeners();
+    }
+  }
+
+  // Device Selection
+  void selectDevice(String deviceId) {
+    _selectedDeviceId = deviceId;
     notifyListeners();
-
-    bool permissionsOk = await checkAndRequestPermissions();
-    if (!permissionsOk) {
-      _isDiscovering = false;
-      notifyListeners();
-      return;
-    }
-
-    bool? btEnabled = await FlutterBluetoothSerial.instance.isEnabled;
-    if (btEnabled != true) {
-      _errorMessage = "Lütfen Bluetooth'u açın.";
-      _isDiscovering = false;
-      notifyListeners();
-      bool requested = await _bluetoothService.requestEnableBluetooth();
-      if (!requested) {
-        _isDiscovering = false;
-        notifyListeners();
-        return;
-      }
-    }
-    // İzinler ve Bluetooth durumu tamam, taramayı başlat
-    _bluetoothService.startDiscovery();
   }
 
-  void stopDiscovery() {
-    if (_isDiscovering) {
-      _isDiscovering = false;
-      _bluetoothService.stopDiscovery();
-      notifyListeners();
+  // Utility Methods
+  bool isDeviceConnected(String deviceId) {
+    return _connectedDevices.any((device) => device.id == deviceId);
+  }
+
+  ConnectedDevice? getDeviceById(String deviceId) {
+    try {
+      return _connectedDevices.firstWhere((device) => device.id == deviceId);
+    } catch (e) {
+      return null;
     }
   }
 
+  void clearConnections() {
+    _connectedDevices.clear();
+    _selectedDeviceId = null;
+    notifyListeners();
+  }
+
+  Future<void> disconnectDevice(String deviceId) async {
+    try {
+      await _bluetoothService.disconnectFromEndpoint(deviceId);
+      _handleDisconnected(deviceId);
+    } catch (e) {
+      _error = 'Disconnection failed: ${e.toString()}';
+      notifyListeners();
+    }
+  }
+
+  // Error Handling
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  // Cleanup
   @override
   void dispose() {
-    print("BluetoothListViewModel disposing...");
-    stopDiscovery();
-    _discoveryStreamSubscription?.cancel();
-    // _bluetoothService.dispose(); // BluetoothService, ChatViewModel tarafından da kullanılabilir,
-    // bu yüzden burada dispose etmeyebiliriz veya referans sayımı yapılabilir.
-    // Şimdilik ChatViewModel'in dispose etmesine bırakalım.
+    if (_isAdvertising) {
+      _bluetoothService.stopAdvertising();
+    }
+    if (_isDiscovering) {
+      _bluetoothService.stopDiscovery();
+    }
+    _bluetoothService.stopAllEndpoints();
     super.dispose();
   }
 }

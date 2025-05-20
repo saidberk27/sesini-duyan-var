@@ -12,6 +12,8 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 
 // Arka planda kullanılacak diğer paketler
 import 'package:geolocator/geolocator.dart';
+import 'package:sesini_duyan_var/viewmodels/bluetooth_chatlist_view_model.dart';
+import 'package:sesini_duyan_var/views/chat_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -29,13 +31,16 @@ import 'package:sesini_duyan_var/models/location_data_model.dart';
 import 'package:sesini_duyan_var/views/login_view.dart';
 import 'package:sesini_duyan_var/views/register_view.dart';
 import 'package:sesini_duyan_var/views/home_view.dart';
-import 'package:sesini_duyan_var/views/bluetooth_chatlist_view.dart'; // BluetoothPage -> BluetoothChatListView olarak varsayılmıştı
+import 'package:sesini_duyan_var/views/chatlist_view.dart'; // BluetoothPage -> BluetoothChatListView olarak varsayılmıştı
 import 'package:sesini_duyan_var/views/settings_view.dart';
 import 'package:sesini_duyan_var/views/user_profile_view.dart';
 import 'package:sesini_duyan_var/views/about_view.dart';
-import 'package:sesini_duyan_var/views/bluetooth_chat_view.dart';
 import 'package:sesini_duyan_var/views/alert_view.dart';
 import 'package:sesini_duyan_var/views/kvkk_view.dart';
+
+// Bluetooth için gerekli importlar
+import 'package:sesini_duyan_var/services/bluetooth_service.dart';
+import 'package:sesini_duyan_var/viewmodels/bluetooth_chat_view_model.dart';
 
 // --- Flutter Background Service Handler ve Sabitler ---
 // SharedPreferences'ta userId'yi saklamak için kullanılacak anahtar
@@ -150,7 +155,13 @@ void main() async {
 
   // Flutter Background Service'i başlat
   await initializeBackgroundService();
-
+  // İzinleri kontrol et
+  final bluetoothService = BluetoothService();
+  try {
+    await bluetoothService.checkAndRequestPermissions();
+  } catch (e) {
+    print('Initial permission check failed: $e');
+  }
   runApp(const MyApp());
 }
 
@@ -161,8 +172,21 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Önce BluetoothService provider'ı
+        ChangeNotifierProvider(create: (_) => BluetoothService()),
+
+        // Diğer view model'ler
         ChangeNotifierProvider(create: (_) => SendLocationViewModel()),
         ChangeNotifierProvider(create: (_) => UserProfileViewModel()),
+
+        // ChatListViewModel, BluetoothService'i provider'dan alır
+        ChangeNotifierProxyProvider<BluetoothService, ChatListViewModel>(
+          create:
+              (context) => ChatListViewModel(context.read<BluetoothService>()),
+          update:
+              (context, bluetoothService, previous) =>
+                  ChatListViewModel(bluetoothService),
+        ),
       ],
       child: MaterialApp(
         title: 'Sesini Duyan Var',
@@ -190,11 +214,11 @@ class MyApp extends StatelessWidget {
           '/home': (context) => const HomePage(),
           '/bluetooth':
               (context) =>
-                  const BluetoothPage(), // BluetoothPage'i kendi sayfanızla değiştirin
+                  const ChatListView(), // BluetoothPage'i kendi sayfanızla değiştirin
           '/settings': (context) => const SettingsPage(),
           '/profile': (context) => const UserProfilePage(),
           '/about': (context) => const AboutPage(),
-          '/chat': (context) => const BluetoothChatPage(),
+          '/chat': (context) => ChatView(deviceId: 'Varsayılan'),
           '/alert': (context) => const AlertPage(),
           '/kvkk': (context) => const KvkkPage(),
         },

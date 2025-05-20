@@ -1,175 +1,237 @@
-import 'dart:async';
-import 'dart:convert'; // utf8 için
-import 'dart:typed_data'; // Uint8List için
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:nearby_connections/nearby_connections.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:location/location.dart' as location_service;
+import 'package:sesini_duyan_var/models/chat_message.dart';
 
-// Bluetooth bağlantı durumlarını temsil eden enum
-enum BluetoothConnectionState { disconnected, connecting, connected, error }
+class BluetoothService extends ChangeNotifier {
+  final Nearby _nearby = Nearby();
+  final location_service.Location _location = location_service.Location();
+  final String _serviceId = "com.example.nearbychat";
+  final Strategy _strategy = Strategy.P2P_CLUSTER;
+  final Map<String, String> _deviceNames = {};
 
-class BluetoothService {
-  // Singleton instance oluşturma (isteğe bağlı, Provider ile de yönetilebilir)
-  // static final BluetoothService _instance = BluetoothService._internal();
-  // factory BluetoothService() => _instance;
-  // BluetoothService._internal();
+  final List<ChatMessage> _messages = [];
+  List<ChatMessage> get messages => List.unmodifiable(_messages);
 
-  final FlutterBluetoothSerial _bluetooth = FlutterBluetoothSerial.instance;
-  BluetoothConnection? _connection; // Aktif bağlantı
-  BluetoothDevice? _connectedDevice; // Bağlı olan cihaz
-
-  // Bağlantı durumu için StreamController
-  final _connectionStateController =
-      StreamController<BluetoothConnectionState>.broadcast();
-  Stream<BluetoothConnectionState> get connectionStateStream =>
-      _connectionStateController.stream;
-
-  // Gelen mesajlar için StreamController
-  final _receivedMessagesController = StreamController<String>.broadcast();
-  Stream<String> get receivedMessagesStream =>
-      _receivedMessagesController.stream;
-
-  // Keşfedilen cihazlar için StreamController
-  final _discoveryResultController =
-      StreamController<List<BluetoothDiscoveryResult>>.broadcast();
-  Stream<List<BluetoothDiscoveryResult>> get discoveryResultStream =>
-      _discoveryResultController.stream;
-
-  List<BluetoothDiscoveryResult> _discoveryResults = [];
-  StreamSubscription? _discoveryStreamSubscription;
-
-  BluetoothService() {
-    // Bluetooth durumu değişikliklerini dinle
-    _bluetooth.state.then((state) {
-      print("Bluetooth durumu: $state");
-      if (state == BluetoothState.STATE_OFF) {
-        // Bluetooth kapalıysa kullanıcıyı uyarabilir veya açmasını isteyebilirsiniz.
-      }
-    });
+  // Cihaz adı yönetimi
+  void setDeviceName(String endpointId, String name) {
+    _deviceNames[endpointId] = name;
   }
 
-  // Bluetooth'u açma isteği (kullanıcı onayı gerektirir)
-  Future<bool> requestEnableBluetooth() async {
-    bool? enabled = await _bluetooth.requestEnable();
-    return enabled ?? false;
+  String? getDeviceName(String endpointId) {
+    return _deviceNames[endpointId];
   }
 
-  // Cihaz keşfini başlat
-  void startDiscovery() {
-    _discoveryResults = []; // Eski sonuçları temizle
-    _discoveryResultController.add(_discoveryResults); // UI'ı güncelle
+  Future<bool> checkAndRequestPermissions() async {
+    try {
+      List<Permission> permissions = [
+        Permission.bluetooth,
+        Permission.bluetoothAdvertise,
+        Permission.bluetoothConnect,
+        Permission.bluetoothScan,
+        Permission.location,
+        Permission.locationAlways,
+        Permission.locationWhenInUse,
+        Permission.microphone,
+        Permission.nearbyWifiDevices,
+      ];
 
-    _discoveryStreamSubscription = _bluetooth.startDiscovery().listen((result) {
-      // Aynı cihazın birden fazla kez eklenmesini engelle
-      final existingIndex = _discoveryResults.indexWhere(
-        (element) => element.device.address == result.device.address,
-      );
-      if (existingIndex >= 0) {
-        // _discoveryResults[existingIndex] = result; // Güncellemek isterseniz
-      } else {
-        if (result.device.name != null && result.device.name!.isNotEmpty) {
-          _discoveryResults.add(result);
+      for (var permission in permissions) {
+        if (await permission.status != PermissionStatus.granted) {
+          final status = await permission.request();
+          if (status != PermissionStatus.granted) {
+            print('${permission.toString()} is not granted: $status');
+          }
         }
       }
-      _discoveryResultController.add(
-        List.from(_discoveryResults),
-      ); // Yeni listeyi yayınla
-    });
 
-    _discoveryStreamSubscription?.onDone(() {
-      print("Cihaz keşfi tamamlandı.");
-      // Keşif bittiğinde bir işlem yapılabilir.
-    });
-    _discoveryStreamSubscription?.onError((error) {
-      print("Cihaz keşfi hatası: $error");
-      _discoveryResultController.addError(error);
-    });
-  }
-
-  // Cihaz keşfini durdur
-  void stopDiscovery() {
-    _discoveryStreamSubscription?.cancel();
-  }
-
-  // Bir cihaza bağlan
-  Future<void> connectToDevice(BluetoothDevice device) async {
-    if (_connection != null && _connection!.isConnected) {
-      print("Zaten bir cihaza bağlı.");
-      if (_connectedDevice?.address == device.address)
-        return; // Aynı cihaza tekrar bağlanma
-      await disconnect(); // Önceki bağlantıyı kes
-    }
-
-    _connectionStateController.add(BluetoothConnectionState.connecting);
-    print("Cihaza bağlanılıyor: ${device.name} (${device.address})");
-
-    try {
-      _connection = await BluetoothConnection.toAddress(device.address);
-      _connectedDevice = device;
-      _connectionStateController.add(BluetoothConnectionState.connected);
-      print("Bağlantı başarılı: ${device.name}");
-
-      // Gelen verileri dinle
-      _connection?.input
-          ?.listen((Uint8List data) {
-            String message = utf8.decode(data); // Gelen veriyi String'e çevir
-            _receivedMessagesController.add(message);
-            print("Gelen mesaj: $message");
-          })
-          .onDone(() {
-            print("Bağlantı sonlandı (onDone).");
-            _connectionStateController.add(
-              BluetoothConnectionState.disconnected,
-            );
-            _connectedDevice = null;
-          });
-    } catch (e) {
-      print("Bağlantı hatası: $e");
-      _connectionStateController.add(BluetoothConnectionState.error);
-      _connectedDevice = null;
-      // Tekrar bağlanmayı deneyebilir veya kullanıcıya hata gösterebilirsiniz.
-    }
-  }
-
-  // Mesaj gönder
-  Future<void> sendMessage(String message) async {
-    if (_connection != null && _connection!.isConnected) {
-      try {
-        // Mesajı Uint8List'e çevirip gönder
-        _connection!.output.add(Uint8List.fromList(utf8.encode(message)));
-        await _connection!
-            .output
-            .allSent; // Tüm verinin gönderildiğinden emin ol
-        print("Mesaj gönderildi: $message");
-      } catch (e) {
-        print("Mesaj gönderme hatası: $e");
-        _connectionStateController.add(BluetoothConnectionState.error);
-        // Hata durumunda bağlantıyı sonlandırmayı veya yeniden kurmayı düşünebilirsiniz.
+      bool locationServiceEnabled = await _location.serviceEnabled();
+      if (!locationServiceEnabled) {
+        locationServiceEnabled = await _location.requestService();
+        if (!locationServiceEnabled) {
+          throw Exception('Location services are disabled');
+        }
       }
-    } else {
-      print("Mesaj gönderilemedi: Bağlantı yok.");
-      // Kullanıcıya bağlantı olmadığını bildirin.
+
+      bool allGranted = true;
+      List<String> deniedPermissions = [];
+
+      for (var permission in permissions) {
+        final status = await permission.status;
+        if (status != PermissionStatus.granted) {
+          allGranted = false;
+          deniedPermissions.add(permission.toString());
+        }
+      }
+
+      if (!allGranted) {
+        throw Exception(
+          'Please grant all required permissions from settings: ${deniedPermissions.join(", ")}',
+        );
+      }
+
+      return true;
+    } catch (e) {
+      print('Permission check failed: $e');
+      rethrow;
     }
   }
 
-  // Bağlantıyı kes
-  Future<void> disconnect() async {
-    if (_connection != null) {
-      await _connection?.close(); // Bağlantıyı kapat
-      _connection = null;
-      _connectedDevice = null;
-      _connectionStateController.add(BluetoothConnectionState.disconnected);
-      print("Bağlantı kesildi.");
+  Future<bool> startAdvertising({
+    required String userName,
+    required Function(String, ConnectionInfo) onConnectionInitiated,
+    required Function(String, Status) onConnectionResult,
+    required Function(String) onDisconnected,
+  }) async {
+    try {
+      await checkAndRequestPermissions();
+
+      return await _nearby.startAdvertising(
+        userName,
+        _strategy,
+        onConnectionInitiated: (String id, ConnectionInfo info) {
+          _deviceNames[id] = info.endpointName;
+          onConnectionInitiated(id, info);
+        },
+        onConnectionResult: onConnectionResult,
+        onDisconnected: onDisconnected,
+        serviceId: _serviceId,
+      );
+    } catch (e) {
+      print('Start advertising failed: $e');
+      rethrow;
     }
   }
 
-  // Servis sonlandırılırken stream'leri kapat
-  void dispose() {
-    stopDiscovery();
-    disconnect();
-    _connectionStateController.close();
-    _receivedMessagesController.close();
-    _discoveryResultController.close();
+  Future<bool> startDiscovery({
+    required String userName,
+    required Function(String, String, String) onEndpointFound,
+    required Function(String?) onEndpointLost,
+  }) async {
+    try {
+      await checkAndRequestPermissions();
+
+      return await _nearby.startDiscovery(
+        userName,
+        _strategy,
+        onEndpointFound: (
+          String endpointId,
+          String endpointName,
+          String serviceId,
+        ) {
+          _deviceNames[endpointId] = endpointName;
+          onEndpointFound(endpointId, endpointName, serviceId);
+        },
+        onEndpointLost: onEndpointLost,
+        serviceId: _serviceId,
+      );
+    } catch (e) {
+      print('Start discovery failed: $e');
+      rethrow;
+    }
   }
 
-  // Bağlı cihazı döndürür
-  BluetoothDevice? get connectedDevice => _connectedDevice;
+  Future<void> stopAdvertising() async {
+    try {
+      await _nearby.stopAdvertising();
+    } catch (e) {
+      print('Stop advertising failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> stopDiscovery() async {
+    try {
+      await _nearby.stopDiscovery();
+    } catch (e) {
+      print('Stop discovery failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> requestConnection({
+    required String userName,
+    required String endpointId,
+    required Function(String, ConnectionInfo) onConnectionInitiated,
+    required Function(String, Status) onConnectionResult,
+    required Function(String) onDisconnected,
+  }) async {
+    try {
+      await checkAndRequestPermissions();
+
+      await _nearby.requestConnection(
+        userName,
+        endpointId,
+        onConnectionInitiated: (String id, ConnectionInfo info) {
+          _deviceNames[id] = info.endpointName;
+          onConnectionInitiated(id, info);
+        },
+        onConnectionResult: onConnectionResult,
+        onDisconnected: onDisconnected,
+      );
+    } catch (e) {
+      print('Request connection failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> acceptConnection({
+    required String endpointId,
+    required Function(String, Payload) onPayLoadReceived,
+    required Function(String, PayloadTransferUpdate) onPayloadTransferUpdate,
+  }) async {
+    try {
+      await checkAndRequestPermissions();
+
+      await _nearby.acceptConnection(
+        endpointId,
+        onPayLoadRecieved: onPayLoadReceived,
+        onPayloadTransferUpdate: onPayloadTransferUpdate,
+      );
+    } catch (e) {
+      print('Accept connection failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> rejectConnection(String endpointId) async {
+    try {
+      await _nearby.rejectConnection(endpointId);
+    } catch (e) {
+      print('Reject connection failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> disconnectFromEndpoint(String endpointId) async {
+    try {
+      await _nearby.disconnectFromEndpoint(endpointId);
+      _deviceNames.remove(endpointId);
+    } catch (e) {
+      print('Disconnect from endpoint failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> sendMessage(String endpointId, String message) async {
+    try {
+      final bytes = Uint8List.fromList(message.codeUnits);
+      await _nearby.sendBytesPayload(endpointId, bytes);
+    } catch (e) {
+      print('Send message failed: $e');
+      rethrow;
+    }
+  }
+
+  void stopAllEndpoints() {
+    try {
+      _nearby.stopAllEndpoints();
+      _deviceNames.clear();
+    } catch (e) {
+      print('Stop all endpoints failed: $e');
+      rethrow;
+    }
+  }
 }

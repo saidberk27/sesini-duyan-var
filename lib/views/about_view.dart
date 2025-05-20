@@ -21,9 +21,7 @@ class _AboutPageState extends State<AboutPage> {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       elevation: 2.0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.0),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -31,9 +29,9 @@ class _AboutPageState extends State<AboutPage> {
           children: [
             Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             content,
@@ -60,7 +58,7 @@ class _AboutPageState extends State<AboutPage> {
             ),
           ],
         ),
-        elevation: 2,    
+        elevation: 2,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -86,16 +84,13 @@ class _AboutPageState extends State<AboutPage> {
               content: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Ders Kodu: BM-314',
-                    style: theme.textTheme.bodyLarge,
-                  ),
+                  Text('Ders Kodu: BM-314', style: theme.textTheme.bodyLarge),
                   Text(
                     'Ders Adı: Yazılım Mühendisliği',
                     style: theme.textTheme.bodyLarge,
                   ),
                   Text(
-                    'Proje Hocası: Prof. Dr. Hacer Karacan',
+                    'Proje Danışmanı: Prof. Dr. Hacer Karacan',
                     style: theme.textTheme.bodyLarge,
                   ),
                 ],
