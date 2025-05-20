@@ -9,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart'; // Tarih form
 
 // Flutter Background Service için eklendi
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_background_service_android/flutter_background_service_android.dart'; // Android için eklendi
 
 // Arka planda kullanılacak diğer paketler
 import 'package:geolocator/geolocator.dart';
@@ -46,13 +47,28 @@ const String userIdSharedPrefKey =
 // Arka plan servisi başladığında çağrılacak olan asıl fonksiyon
 @pragma('vm:entry-point') // Bu satır önemli!
 Future<void> onStart(ServiceInstance service) async {
+  // Bu satırın Dart'ın yerel kodlarla etkileşim kurabilmesini sağladığından emin olun.
+  // Genellikle sadece arka plan isolate'lerinde gereklidir.
   DartPluginRegistrant.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  print("BackgroundService: Firebase arka planda initialize edildi.");
+  // BURADAN Firebase.initializeApp() ÇAĞRISINI KALDIRDIK.
+  // Firebase, uygulamanın main() fonksiyonunda zaten başlatılıyor.
+  // Arka plan hizmeti, ana isolate'te başlatılan Firebase instance'ını kullanabilir.
+  print("BackgroundService: Arka plan servisi başlatıldı.");
 
+  // Android'e özel Foreground/Background servis geçişleri (isteğe bağlı)
+  if (service is AndroidServiceInstance) {
+    service.on('setAsForeground').listen((event) {
+      service.setAsForegroundService();
+    });
+    service.on('setAsBackground').listen((event) {
+      service.setAsBackgroundService();
+    });
+  }
+
+  // Periyodik görev (konum güncelleme)
+  // Timer.periodic(const Duration(minutes: 1), (timer) async { // Test için 1 dakika
   Timer.periodic(const Duration(hours: 1), (timer) async {
-    // Timer.periodic(const Duration(minutes: 1), (timer) async { // Test için 1 dakika
     print("BackgroundService: Periyodik görev tetiklendi - ${DateTime.now()}");
 
     try {
@@ -141,14 +157,12 @@ Future<void> initializeBackgroundService() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ÖNEMLİ: Arka plan servisini Firebase'den ÖNCE veya SONRA başlatabilirsiniz.
-  // onStart içinde Firebase.initializeApp tekrar çağrıldığı için genellikle sorun olmaz.
-  // Ancak, uygulamanızın mantığına göre sıralamayı ayarlayabilirsiniz.
-  // Burada Firebase'den sonra başlatıyoruz.
+  // Firebase'i burada, ana isolate'te BİR KEZ başlatın.
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await initializeDateFormatting('tr_TR', null); // Türkçe tarih formatı için
 
   // Flutter Background Service'i başlat
+  // Firebase başlatıldıktan sonra çağrılmasında sorun yoktur.
   await initializeBackgroundService();
 
   runApp(const MyApp());
@@ -190,7 +204,7 @@ class MyApp extends StatelessWidget {
           '/home': (context) => const HomePage(),
           '/bluetooth':
               (context) =>
-                  const BluetoothPage(), // BluetoothPage'i kendi sayfanızla değiştirin
+          const BluetoothPage(), // BluetoothPage'i kendi sayfanızla değiştirin
           '/settings': (context) => const SettingsPage(),
           '/profile': (context) => const UserProfilePage(),
           '/about': (context) => const AboutPage(),

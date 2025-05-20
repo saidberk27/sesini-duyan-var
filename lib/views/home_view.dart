@@ -1,10 +1,17 @@
+
+// home_page.dart
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:sesini_duyan_var/viewmodels/send_location_model.dart';
 import 'package:sesini_duyan_var/theme/app_theme.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'dart:async';
 import 'dart:math';
+
+// KonumHaritaView ve KonumHaritaViewModel sınıflarını içe aktarın
+import 'package:sesini_duyan_var/viewmodels/location_map_model.dart';
+import 'package:sesini_duyan_var/views/location_map_view.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,9 +24,9 @@ class _HomePageState extends State<HomePage> {
   List<double>? _accelerometerValues;
   List<double>? _gyroscopeValues;
   bool _isListening = false;
-  final double _accelerationThreshold = 18.0; // Ayarlanabilir ivme eşiği (m/s^2)
-  final double _angularVelocityThreshold = 2.5; // Ayarlanabilir açısal hız eşiği (rad/s)
-  final Duration _durationThreshold = const Duration(milliseconds: 600); // Ayarlanabilir süre eşiği
+  final double _accelerationThreshold = 15.0;
+  final double _angularVelocityThreshold = 1.5;
+  final Duration _durationThreshold = const Duration(milliseconds: 400);
   DateTime? _shakeStartTime;
   bool _accelerometerThresholdExceeded = false;
   bool _gyroscopeThresholdExceeded = false;
@@ -27,12 +34,12 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _startListening(); // Sayfa ilk açıldığında dinlemeyi başlat
+    _startListening();
   }
 
   @override
   void dispose() {
-    _stopListening(); // Sayfa kapatıldığında dinlemeyi durdur
+    _stopListening();
     super.dispose();
   }
 
@@ -58,8 +65,6 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _isListening = false;
     });
-    // Gerekirse event dinlemelerini iptal edebilirsiniz.
-    // Ancak listen metodu doğrudan iptal mekanizması sunmaz.
   }
 
   void _checkShake() {
@@ -78,17 +83,17 @@ class _HomePageState extends State<HomePage> {
         _shakeStartTime = DateTime.now();
       } else if (DateTime.now().difference(_shakeStartTime!) > _durationThreshold) {
         _navigateToAlert();
-        _shakeStartTime = null; // Reset
+        _shakeStartTime = null;
       }
     } else {
-      _shakeStartTime = null; // Sarsıntı durdu
+      _shakeStartTime = null;
     }
   }
 
   void _navigateToAlert() {
     if (mounted) {
       Navigator.pushNamed(context, '/alert');
-      _stopListening(); // Uyarı sayfasına giderken dinlemeyi durdur
+      _stopListening();
     }
   }
 
@@ -111,9 +116,7 @@ class _HomePageState extends State<HomePage> {
               print(
                 "Logo'ya çift tıklandı, konum alınıyor ve AlertPage'e gidilecek...",
               );
-              locationViewModel
-                  .getCurrentLocation()
-                  .then((_) {
+              locationViewModel.getCurrentLocation().then((_) {
                 if (locationViewModel.latitude != null &&
                     locationViewModel.longitude != null) {
                   Navigator.pushNamed(context, '/alert');
@@ -127,8 +130,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   );
                 }
-              })
-                  .catchError((error) {
+              }).catchError((error) {
                 print("Konum alınırken hata (HomePage): $error");
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -146,15 +148,15 @@ class _HomePageState extends State<HomePage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              margin: const EdgeInsets.only(bottom: 16), // Alt boşluk azaltıldı
+              margin: const EdgeInsets.only(bottom: 16),
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
                     Image.asset(
                       'assets/images/logo0.png',
-                      height: 150, // Boyut biraz küçültüldü
-                      width: 150, // Boyut biraz küçültüldü
+                      height: 150,
+                      width: 150,
                       errorBuilder: (context, error, stackTrace) {
                         return const Icon(
                           Icons.broken_image,
@@ -177,39 +179,75 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-
+          InkWell(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => ChangeNotifierProvider(
+                    create: (context) => KonumHaritaViewModel(),
+                    child: const KonumHaritaView(),
+                  ),
+                ),
+              );
+            },
+            child: Card(
+              elevation: 2,
+              color: theme.scaffoldBackgroundColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.only(bottom: 24),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 60,
+                      color: AppTheme.primaryColor,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Kullanıcı Konumları',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.textTheme.bodyLarge?.color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           // --- YENİ BLUETOOTH MESAJLAŞMA KARTI (Logo formatında) ---
           InkWell(
             onTap: () {
-              // Çift tıklama yerine tek tıklama
               Navigator.pushNamed(context, '/bluetooth');
             },
-            borderRadius: BorderRadius.circular(
-              12,
-            ), // InkWell için de border radius
+            borderRadius: BorderRadius.circular(12),
             child: Card(
               elevation: 2,
-              color:
-              theme.scaffoldBackgroundColor, // Logo kartıyla aynı arka plan
+              color: theme.scaffoldBackgroundColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               margin: const EdgeInsets.only(
                 bottom: 24,
-              ), // Diğer kartlarla aynı boşluk
+              ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   vertical: 24,
                   horizontal: 16,
-                ), // Logo kartına benzer padding
+                ),
                 child: Column(
-                  // İçerik dikeyde ortalansın
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.bluetooth_searching_rounded,
-                      size: 60, // İkon boyutu
-                      color: AppTheme.primaryColor, // Temadan renk
+                      size: 60,
+                      color: AppTheme.primaryColor,
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -225,8 +263,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-
-          // --- BLUETOOTH MESAJLAŞMA KARTI BİTİŞ ---
           HomePageCard(
             icon: Icons.person_outline_rounded,
             title: 'Kullanıcı Profilim',
@@ -237,7 +273,6 @@ class _HomePageState extends State<HomePage> {
             },
           ),
           const SizedBox(height: 16),
-          // Diğer HomePageCard'lar aynı kalır
           HomePageCard(
             icon: Icons.settings_outlined,
             title: 'Uygulama Ayarları',
@@ -345,3 +380,4 @@ class HomePageCard extends StatelessWidget {
     );
   }
 }
+
