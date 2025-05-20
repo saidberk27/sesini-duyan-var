@@ -37,6 +37,7 @@ import 'package:sesini_duyan_var/views/about_view.dart';
 import 'package:sesini_duyan_var/views/bluetooth_chat_view.dart';
 import 'package:sesini_duyan_var/views/alert_view.dart';
 import 'package:sesini_duyan_var/views/kvkk_view.dart';
+import 'package:sesini_duyan_var/utils/earthquake_detector.dart';
 
 // --- Flutter Background Service Handler ve Sabitler ---
 // SharedPreferences'ta userId'yi saklamak için kullanılacak anahtar
@@ -177,6 +178,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => SendLocationViewModel()),
         ChangeNotifierProvider(create: (_) => UserProfileViewModel()),
+        ChangeNotifierProvider(create: (_) => EarthquakeDetector()),
       ],
       child: MaterialApp(
         title: 'Sesini Duyan Var',
