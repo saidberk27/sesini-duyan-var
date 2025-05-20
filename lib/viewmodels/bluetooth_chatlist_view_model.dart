@@ -96,7 +96,8 @@ class ChatListViewModel extends ChangeNotifier {
         onPayLoadReceived: (endpointId, payload) {
           if (payload.type == PayloadType.BYTES) {
             String message = String.fromCharCodes(payload.bytes!);
-            _addMessage(endpointId, message, false);
+            debugPrint("Mesaj: ${message}");
+            addMessage(endpointId, message, false);
           }
         },
         onPayloadTransferUpdate: (endpointId, update) {
@@ -164,7 +165,7 @@ class ChatListViewModel extends ChangeNotifier {
   }
 
   // Message Handling
-  void _addMessage(String deviceId, String text, bool isMe) {
+  void addMessage(String deviceId, String text, bool isMe) {
     if (!_messages.containsKey(deviceId)) {
       _messages[deviceId] = [];
     }
@@ -180,7 +181,7 @@ class ChatListViewModel extends ChangeNotifier {
 
     try {
       await _bluetoothService.sendMessage(_selectedDeviceId!, message);
-      _addMessage(_selectedDeviceId!, message, true);
+      addMessage(_selectedDeviceId!, message, true);
     } catch (e) {
       _error = 'Message sending failed: ${e.toString()}';
       notifyListeners();

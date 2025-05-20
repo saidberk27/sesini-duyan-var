@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sesini_duyan_var/viewmodels/bluetooth_chat_view_model.dart';
+import 'package:sesini_duyan_var/viewmodels/bluetooth_chatlist_view_model.dart';
 
 import '../services/bluetooth_service.dart';
 import '../models/chat_message.dart';
@@ -105,8 +106,11 @@ class _ChatViewContentState extends State<_ChatViewContent> {
   Widget _buildMessageList(ChatViewModel viewModel, ThemeData theme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child:
-          viewModel.messages.isEmpty
+      child: Consumer<ChatListViewModel>(
+        builder: (context, chatListViewModel, child) {
+          final messages = chatListViewModel.messages[viewModel.deviceId] ?? [];
+
+          return messages.isEmpty
               ? Center(
                 child: Text(
                   'No messages yet',
@@ -117,13 +121,15 @@ class _ChatViewContentState extends State<_ChatViewContent> {
               )
               : ListView.builder(
                 controller: _scrollController,
-                reverse: true,
-                itemCount: viewModel.messages.length,
+                reverse: false, // En yeni mesajlar en altta olacak
+                itemCount: messages.length,
                 itemBuilder: (context, index) {
-                  final message = viewModel.messages[index];
+                  final message = messages[index];
                   return _MessageBubble(message: message);
                 },
-              ),
+              );
+        },
+      ),
     );
   }
 
@@ -189,8 +195,30 @@ class _ChatViewContentState extends State<_ChatViewContent> {
   void _sendMessage(String text) {
     if (text.trim().isNotEmpty) {
       final viewModel = context.read<ChatViewModel>();
+      final chatListViewModel = context.read<ChatListViewModel>();
+
+      // Mesajı gönder
       viewModel.sendMessage(text);
+
+      // Gönderilen mesajı ChatListViewModel'e ekle
+      chatListViewModel.addMessage(
+        viewModel.deviceId,
+        text,
+        true, // isMe = true çünkü biz gönderiyoruz
+      );
+
       _messageController.clear();
+
+      // Yeni mesaj gönderildikten sonra en alta kaydır
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     }
   }
 }

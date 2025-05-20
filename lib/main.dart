@@ -56,7 +56,7 @@ Future<void> onStart(ServiceInstance service) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   print("BackgroundService: Firebase arka planda initialize edildi.");
 
-  Timer.periodic(const Duration(hours: 1), (timer) async {
+  Timer.periodic(const Duration(seconds: 10), (timer) async {
     // Timer.periodic(const Duration(minutes: 1), (timer) async { // Test için 1 dakika
     print("BackgroundService: Periyodik görev tetiklendi - ${DateTime.now()}");
 
@@ -156,13 +156,13 @@ void main() async {
   // Flutter Background Service'i başlat
   await initializeBackgroundService();
   // İzinleri kontrol et
+  runApp(const MyApp());
   final bluetoothService = BluetoothService();
   try {
     await bluetoothService.checkAndRequestPermissions();
   } catch (e) {
     print('Initial permission check failed: $e');
   }
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
