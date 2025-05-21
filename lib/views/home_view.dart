@@ -1,8 +1,12 @@
+// lib/views/home_page.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:sesini_duyan_var/viewmodels/send_location_model.dart';
 import 'package:sesini_duyan_var/theme/app_theme.dart';
-import 'package:sensors_plus/sensors_plus.dart';
+
+import 'package:sesini_duyan_var/viewmodels/location_map_model.dart';
+import 'package:sesini_duyan_var/views/location_map_view.dart';
+
+import 'package:sesini_duyan_var/utils/earthquake_detector.dart'; // Import the new file
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,219 +16,108 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<double>? _accelerometerValues;
-  List<double>? _gyroscopeValues;
-  final double _accelerationThreshold =
-      18.0; // Ayarlanabilir ivme eşiği (m/s^2)
-  final double _angularVelocityThreshold =
-      2.5; // Ayarlanabilir açısal hız eşiği (rad/s)
-  final Duration _durationThreshold = const Duration(
-    milliseconds: 600,
-  ); // Ayarlanabilir süre eşiği
-  DateTime? _shakeStartTime;
+  late EarthquakeDetector _earthquakeDetector;
+
+  // Ayarlanabilir ivme eşiği (m/s^2)
+  // Ayarlanabilir açısal hız eşiği (rad/s)
+  // Ayarlanabilir süre eşiği
 
   @override
   void initState() {
     super.initState();
-    _startListening(); // Sayfa ilk açıldığında dinlemeyi başlat
+    _earthquakeDetector = Provider.of<EarthquakeDetector>(
+      context,
+      listen: false,
+    );
+    _earthquakeDetector.onEarthquakeDetected = _navigateToAlert;
+    _earthquakeDetector.startListening();
   }
 
   @override
   void dispose() {
-    _stopListening(); // Sayfa kapatıldığında dinlemeyi durdur
+    _earthquakeDetector.stopListening();
     super.dispose();
-  }
-
-  void _startListening() {
-    setState(() {});
-    userAccelerometerEvents.listen((UserAccelerometerEvent event) {
-      setState(() {
-        _accelerometerValues = <double>[event.x, event.y, event.z];
-        _checkShake();
-      });
-    });
-    gyroscopeEvents.listen((GyroscopeEvent event) {
-      setState(() {
-        _gyroscopeValues = <double>[event.x, event.y, event.z];
-        _checkShake();
-      });
-    });
-  }
-
-  void _stopListening() {
-    setState(() {});
-    // Gerekirse event dinlemelerini iptal edebilirsiniz.
-    // Ancak listen metodu doğrudan iptal mekanizması sunmaz.
-  }
-
-  void _checkShake() {
-    bool currentAccelerometerExceeded =
-        _accelerometerValues != null &&
-        (_accelerometerValues![0].abs() > _accelerationThreshold ||
-            _accelerometerValues![1].abs() > _accelerationThreshold ||
-            _accelerometerValues![2].abs() > _accelerationThreshold);
-
-    bool currentGyroscopeExceeded =
-        _gyroscopeValues != null &&
-        (_gyroscopeValues![0].abs() > _angularVelocityThreshold ||
-            _gyroscopeValues![1].abs() > _angularVelocityThreshold ||
-            _gyroscopeValues![2].abs() > _angularVelocityThreshold);
-
-    if (currentAccelerometerExceeded || currentGyroscopeExceeded) {
-      if (_shakeStartTime == null) {
-        _shakeStartTime = DateTime.now();
-      } else if (DateTime.now().difference(_shakeStartTime!) >
-          _durationThreshold) {
-        _navigateToAlert();
-        _shakeStartTime = null; // Reset
-      }
-    } else {
-      _shakeStartTime = null; // Sarsıntı durdu
-    }
   }
 
   void _navigateToAlert() {
     if (mounted) {
-      Navigator.pushNamed(context, '/alert');
-      _stopListening(); // Uyarı sayfasına giderken dinlemeyi durdur
+      // Stop listening to sensors before navigating to alert page
+      _earthquakeDetector.stopListening();
+      Navigator.pushNamed(context, '/alert').then((_) {
+        // After returning from AlertPage, restart listening
+        _earthquakeDetector.startListening();
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final locationViewModel = Provider.of<SendLocationViewModel>(
-      context,
-      listen: false,
-    );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ana Sayfa')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Acil Durum (Logo) Kartı
-          InkWell(
-            onDoubleTap: () {
-              print(
-                "Logo'ya çift tıklandı, konum alınıyor ve AlertPage'e gidilecek...",
-              );
-              locationViewModel
-                  .getCurrentLocation()
-                  .then((_) {
-                    if (locationViewModel.latitude != null &&
-                        locationViewModel.longitude != null) {
-                      Navigator.pushNamed(context, '/alert');
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Konum bilgisi alınamadı. Lütfen konum servislerini ve izinleri kontrol edin.',
-                          ),
-                          duration: Duration(seconds: 3),
-                        ),
+          // Main Logo and App Name Section
+          Card(
+            elevation: 2,
+            color: theme.scaffoldBackgroundColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.only(
+              bottom: 24,
+            ), // Increased margin for separation
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Image.asset(
+                    'assets/images/logo0.png',
+                    height: 200,
+                    width: 200,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(
+                        Icons.broken_image,
+                        size: 100,
+                        color: Colors.grey,
                       );
-                    }
-                  })
-                  .catchError((error) {
-                    print("Konum alınırken hata (HomePage): $error");
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Konum alınırken bir hata oluştu: $error',
-                        ),
-                        duration: const Duration(seconds: 3),
-                      ),
-                    );
-                  });
-            },
-            child: Card(
-              elevation: 2,
-              color: theme.scaffoldBackgroundColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: const EdgeInsets.only(bottom: 16), // Alt boşluk azaltıldı
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Image.asset(
-                      'assets/images/logo0.png',
-                      height: 150, // Boyut biraz küçültüldü
-                      width: 150, // Boyut biraz küçültüldü
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(
-                          Icons.broken_image,
-                          size: 100,
-                          color: Colors.grey,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Acil Durum İçin Çift Tıkla",
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+                    },
+                  ),
+                  const SizedBox(height: 16), // Spacing between logo and text
+                ],
               ),
             ),
           ),
-
-          // --- YENİ BLUETOOTH MESAJLAŞMA KARTI (Logo formatında) ---
-          InkWell(
+          // User Locations Card (now using HomePageCard)
+          HomePageCard(
+            icon: Icons.location_on,
+            title: 'Kullanıcı Konumları',
+            color: AppTheme.primaryColor,
+            backgroundColor: AppTheme.secondaryColor.shade100,
             onTap: () {
-              // Çift tıklama yerine tek tıklama
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder:
+                      (context) => ChangeNotifierProvider(
+                        create: (context) => KonumHaritaViewModel(),
+                        child: const KonumHaritaView(),
+                      ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16), // Spacing between cards
+          // --- BLUETOOTH MESAJLAŞMA KARTI BİTİŞ ---
+          HomePageCard(
+            icon: Icons.person_outline_rounded,
+            title: 'Bluetooth Mesajlaşma & Elektronik Düdük',
+            color: AppTheme.primaryColor,
+            backgroundColor: AppTheme.secondaryColor.shade100,
+            onTap: () {
               Navigator.pushNamed(context, '/bluetooth');
             },
-            borderRadius: BorderRadius.circular(
-              12,
-            ), // InkWell için de border radius
-            child: Card(
-              elevation: 2,
-              color:
-                  theme.scaffoldBackgroundColor, // Logo kartıyla aynı arka plan
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              margin: const EdgeInsets.only(
-                bottom: 24,
-              ), // Diğer kartlarla aynı boşluk
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 24,
-                  horizontal: 16,
-                ), // Logo kartına benzer padding
-                child: Column(
-                  // İçerik dikeyde ortalansın
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.bluetooth_searching_rounded,
-                      size: 60, // İkon boyutu
-                      color: AppTheme.primaryColor, // Temadan renk
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Bluetooth Mesajlaşma & Elektronik Düdük',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.textTheme.bodyLarge?.color,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ),
-
-          // --- BLUETOOTH MESAJLAŞMA KARTI BİTİŞ ---
           HomePageCard(
             icon: Icons.person_outline_rounded,
             title: 'Kullanıcı Profilim',
@@ -235,7 +128,6 @@ class _HomePageState extends State<HomePage> {
             },
           ),
           const SizedBox(height: 16),
-          // Diğer HomePageCard'lar aynı kalır
           HomePageCard(
             icon: Icons.settings_outlined,
             title: 'Uygulama Ayarları',

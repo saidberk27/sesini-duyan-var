@@ -1,3 +1,4 @@
+// lib/views/alert_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -168,24 +169,7 @@ class _AlertPageState extends State<AlertPage>
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    'Tahmini Şiddet: 6.4',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: Colors.white,
-                      fontSize: 24,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Tahmini Merkez Üssü Uzaklığı: 4.7 km',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: Colors.white,
-                      fontSize: 24,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
+                  // Removed hardcoded intensity and epicenter distance
                   Text(
                     'Konumunuz: $_locationName',
                     style: theme.textTheme.titleLarge?.copyWith(
